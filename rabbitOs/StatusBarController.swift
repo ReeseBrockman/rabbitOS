@@ -15,7 +15,7 @@ class StatusBarController {
     private var dismissTimer: Timer?
     private var isShowing = false
 
-    let panelWidth: CGFloat = 178
+    let panelWidth: CGFloat = 179
     let panelHeight: CGFloat = 300
     let xPosition: CGFloat = 646
     let startY: CGFloat = 956
@@ -47,21 +47,18 @@ class StatusBarController {
         )
 
         window.level = .mainMenu
-        window.backgroundColor = .clear
+        window.backgroundColor = NSColor.clear
         window.isOpaque = false
-        window.hasShadow = true
+        window.hasShadow = false
         window.collectionBehavior = [.canJoinAllSpaces, .stationary]
         window.isReleasedWhenClosed = false
 
         let hostingView = NSHostingView(rootView:
             RabbitView()
                 .frame(width: panelWidth, height: panelHeight)
-                .clipShape(RoundedCorners(radius: 16))
         )
         hostingView.wantsLayer = true
-        hostingView.layer?.cornerRadius = 16
-        hostingView.layer?.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
-        hostingView.layer?.masksToBounds = true
+        hostingView.layer?.backgroundColor = CGColor.clear
         window.contentView = hostingView
 
         self.window = window
@@ -95,6 +92,8 @@ class StatusBarController {
         window.setFrameOrigin(NSPoint(x: xPosition, y: startY))
         window.orderFrontRegardless()
 
+        NotificationCenter.default.post(name: NSNotification.Name("PanelDidShow"), object: nil)
+
         let steps = 40
         let stepSize = (startY - targetY) / CGFloat(steps)
 
@@ -106,7 +105,7 @@ class StatusBarController {
         }
 
         dismissTimer?.invalidate()
-        dismissTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: false) { [weak self] _ in
+        dismissTimer = Timer.scheduledTimer(withTimeInterval: 8.0, repeats: false) { [weak self] _ in
             self?.hideWindow()
         }
     }
@@ -127,21 +126,6 @@ class StatusBarController {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.42) {
             window.orderOut(nil)
             self.isShowing = false
-        }
-    }
-
-    struct RoundedCorners: Shape {
-        var radius: CGFloat
-        func path(in rect: CGRect) -> Path {
-            var path = Path()
-            path.move(to: CGPoint(x: 0, y: 0))
-            path.addLine(to: CGPoint(x: rect.width, y: 0))
-            path.addLine(to: CGPoint(x: rect.width, y: rect.height - radius))
-            path.addQuadCurve(to: CGPoint(x: rect.width - radius, y: rect.height), control: CGPoint(x: rect.width, y: rect.height))
-            path.addLine(to: CGPoint(x: radius, y: rect.height))
-            path.addQuadCurve(to: CGPoint(x: 0, y: rect.height - radius), control: CGPoint(x: 0, y: rect.height))
-            path.closeSubpath()
-            return path
         }
     }
 }

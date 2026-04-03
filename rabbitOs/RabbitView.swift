@@ -17,8 +17,12 @@ struct RabbitView: View {
         Cloud(x: 89, y: 210, speed: 25, shape: Cloud.shapes[0]),
         Cloud(x: 89, y: 240, speed: 30, shape: Cloud.shapes[1])
     ]
+    @State private var zFloats: [ZFloat] = []
+    @State private var lastZSpawn: CFTimeInterval = CACurrentMediaTime()
+    @State private var lastStar1Fire: CFTimeInterval = 0
+    @State private var lastStar2Fire: CFTimeInterval = 0
     
-    let panelWidth: CGFloat = 178
+    let panelWidth: CGFloat = 179
     let panelHeight: CGFloat = 300
     let timer = Timer.publish(every: 0.016, on: .main, in: .common).autoconnect()
     
@@ -53,7 +57,7 @@ struct RabbitView: View {
     
     var body: some View {
         ZStack {
-            (isDay ? Color.white : Color.black)
+            (isDay ? Color.white : Color(red: 0.05, green: 0.05, blue: 0.05, opacity: 1.0))
             
             // Stars (night only)
             if !isDay {
@@ -66,16 +70,14 @@ struct RabbitView: View {
                 }
             }
             
-            // Shooting stars (night only)
-            if !isDay {
-                ForEach(shootingStars) { s in
-                    Text("_")
-                        .font(.system(size: 13, design: .monospaced))
-                        .foregroundColor(.white)
-                        .opacity(s.opacity)
-                        .position(x: s.x, y: s.y)
-                        .rotationEffect(.degrees(45))
-                }
+            // Shooting stars
+            ForEach(shootingStars) { s in
+                Text("_")
+                    .font(.system(size: 13, design: .monospaced))
+                    .foregroundColor(.white)
+                    .opacity(s.opacity)
+                    .position(x: s.x, y: s.y)
+                    .rotationEffect(.degrees(45))
             }
             
             // Clouds (day only)
@@ -89,6 +91,18 @@ struct RabbitView: View {
                 }
             }
 
+            // Floating Z's (night only)
+            if !isDay {
+                ForEach(zFloats) { z in
+                    Text("z")
+                        .font(.system(size: 14, design: .monospaced))
+                        .foregroundColor(.white)
+                        .opacity(z.opacity)
+                        .scaleEffect(z.scale)
+                        .position(x: z.x, y: z.y)
+                }
+            }
+
             // Bunny
             Text(bunnyFace)
                 .font(.system(size: 16, design: .monospaced))
@@ -97,11 +111,25 @@ struct RabbitView: View {
                 .position(x: panelWidth / 2, y: panelHeight / 1.2)
         }
         .frame(width: panelWidth, height: panelHeight)
+        .clipShape(UnevenRoundedRectangle(
+            topLeadingRadius: 0,
+            bottomLeadingRadius: 16,
+            bottomTrailingRadius: 16,
+            topTrailingRadius: 0
+        ))
         .onReceive(timer) { _ in
             updateStars()
             updateShootingStars()
             updateClouds()
+            updateZFloats()
             trackMouse()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("PanelDidShow"))) { _ in
+            let now = CACurrentMediaTime()
+            if lastStar1Fire == 0 {
+                lastStar1Fire = now-10
+                lastStar2Fire = now-10
+            }
         }
     }
     
@@ -114,30 +142,51 @@ struct RabbitView: View {
     }
     
     func updateStars() {
+        let bunnyX = panelWidth / 2
+        let bunnyY = panelHeight / 1.2
+        let clearRadius: CGFloat = 35
+
         for i in stars.indices {
-            stars[i].phase += 0.02
+            let dx = stars[i].x - bunnyX
+            let dy = stars[i].y - bunnyY
+            let dist = sqrt(dx * dx + dy * dy)
+            if dist < clearRadius {
+                stars[i].opacity = 0
+                continue
+            }
+            stars[i].phase += 0.04
             let wave = (sin(stars[i].phase) + 1) / 2
             stars[i].opacity = 0.2 + wave * 0.7
         }
     }
     
     func updateShootingStars() {
+        guard lastStar1Fire > 0 else { return }
+        let now = CACurrentMediaTime()
+
         for i in shootingStars.indices {
             shootingStars[i].x += shootingStars[i].dx
             shootingStars[i].y += shootingStars[i].dy
-            shootingStars[i].elapsed += 0.05
+            shootingStars[i].elapsed += 0.016
             let progress = shootingStars[i].elapsed / shootingStars[i].life
-            if progress < 0.2 {
-                shootingStars[i].opacity = progress / 0.2 * 0.85
-            } else if progress > 0.75 {
-                shootingStars[i].opacity = (1 - (progress - 0.75) / 0.25) * 0.85
+            if progress < 0.3 {
+                shootingStars[i].opacity = progress / 0.3 * 0.9
+            } else if progress > 0.7 {
+                shootingStars[i].opacity = (1 - (progress - 0.7) / 0.3) * 0.9
             } else {
-                shootingStars[i].opacity = 0.85
+                shootingStars[i].opacity = 0.9
             }
         }
         shootingStars.removeAll { $0.elapsed >= $0.life }
-        if shootingStars.count < 2 && Double.random(in: 0...1) < 0.02 {
-            shootingStars.append(ShootingStar.spawn(in: CGSize(width: panelWidth, height: panelHeight)))
+
+        if now - lastStar1Fire >= 10 {
+            lastStar1Fire = now
+            shootingStars.append(ShootingStar(x: 10, y: 170, dx: 1.5, dy: 0.0, life: 2.0))
+        }
+
+        if now - lastStar2Fire >= 10 {
+            lastStar2Fire = now
+            shootingStars.append(ShootingStar(x: 10, y: 240, dx: 1.5, dy: 0.0, life: 1.0))
         }
     }
     
@@ -162,6 +211,47 @@ struct RabbitView: View {
             }
         }
     }
+
+    func updateZFloats() {
+        guard !isDay else {
+            zFloats.removeAll()
+            return
+        }
+        for i in zFloats.indices {
+            zFloats[i].elapsed += 0.016
+            zFloats[i].y -= 0.4
+            zFloats[i].x += zFloats[i].dx * 0.016
+            let progress = zFloats[i].elapsed / zFloats[i].life
+            if progress < 0.15 {
+                zFloats[i].opacity = progress / 0.15 * 0.9
+            } else if progress > 0.85 {
+                zFloats[i].opacity = (1 - (progress - 0.85) / 0.15) * 0.9
+            } else {
+                zFloats[i].opacity = 0.9
+            }
+            zFloats[i].scale = 0.8 + progress * 0.3
+        }
+        zFloats.removeAll { $0.elapsed >= $0.life }
+
+        let now = CACurrentMediaTime()
+        if now - lastZSpawn >= 1.75 {
+            lastZSpawn = now
+            // First Z
+            zFloats.append(ZFloat(
+                x: panelWidth / 2 + 10,
+                y: panelHeight / 1.2 - 20,
+                dx: CGFloat.random(in: 5...12)
+            ))
+            // Second Z spawns slightly after and to the right
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                zFloats.append(ZFloat(
+                    x: panelWidth / 2 + 22,
+                    y: panelHeight / 1.2 - 30,
+                    dx: CGFloat.random(in: 5...12)
+                ))
+            }
+        }
+    }
 }
 
 // MARK: - Models
@@ -179,7 +269,7 @@ struct Star: Identifiable {
         let chars = ["*", "+", "."]
         return (0..<count).map { _ in
             Star(
-                x: CGFloat.random(in: 0...178),
+                x: CGFloat.random(in: 0...179),
                 y: CGFloat.random(in: 0...300),
                 char: chars.randomElement()!,
                 size: CGFloat.random(in: 8...14),
@@ -198,18 +288,17 @@ struct ShootingStar: Identifiable {
     var opacity: CGFloat = 0
     var elapsed: CGFloat = 0
     let life: CGFloat
+}
 
-    static func spawn(in size: CGSize) -> ShootingStar {
-        let angle = CGFloat.random(in: 28...50) * .pi / 180
-        let speed = CGFloat.random(in: 40...80)
-        return ShootingStar(
-            x: CGFloat.random(in: 0...size.width),
-            y: CGFloat.random(in: 0...size.height * 0.6),
-            dx: cos(angle) * speed * 0.05,
-            dy: sin(angle) * speed * 0.05,
-            life: CGFloat.random(in: 2.5...4.5)
-        )
-    }
+struct ZFloat: Identifiable {
+    let id = UUID()
+    var x: CGFloat
+    var y: CGFloat
+    var opacity: CGFloat = 0
+    var scale: CGFloat = 0.8
+    var elapsed: CGFloat = 0
+    let life: CGFloat = 3.5
+    let dx: CGFloat
 }
 
 struct Cloud: Identifiable {
